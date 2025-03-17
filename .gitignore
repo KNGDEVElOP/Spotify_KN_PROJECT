@@ -1,0 +1,10 @@
+# Archivos de entorno virtual
+.venv/
+venv/
+
+# Archivos de configuración sensibles
+config.ini
+
+# Archivos de caché de Python
+__pycache__/
+*.pyc
