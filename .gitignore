@@ -4,6 +4,10 @@ venv/
 
 # Archivos de configuración sensibles
 config.ini
+.cache
+
+
+
 
 # Archivos de caché de Python
 __pycache__/

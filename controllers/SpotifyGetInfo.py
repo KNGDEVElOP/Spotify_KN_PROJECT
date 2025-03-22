@@ -1,109 +1,169 @@
-
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) 
 
-from controllers import Spotify_Connector as sc # Importar la conexión con Spotify
-import logging as log  # Importar el módulo logging para registrar información y errores
+from controllers import Spotify_Connector as sc  
+import logging as log  
+from typing import List, Dict, Optional, Any  
 
-# Configuración básica del logging
 log.basicConfig(level=log.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-class GetTracks:
+class SpotifyManager:
     """
-    Clase encargada de obtener la información de Spotify (por ejemplo, las canciones más escuchadas)
-    utilizando la API de Spotify a través de la clase `spotifyConnector` de `Spotify_Connector`.
-    Implementa el patrón Singleton para asegurar que solo haya una instancia en toda la ejecución.
+    Clase encargada de obtener información de Spotify (canciones y artistas más escuchados).
+    Implementa el patrón Singleton para asegurar que solo haya una instancia.
     """
 
-    _instance = None  # Variable de clase para almacenar la única instancia
+    _instance = None  
+    _initialized = False  
 
     def __new__(cls, *args, **kwargs):
-        """Método para aplicar el patrón Singleton, asegurando una única instancia."""
         if cls._instance is None:
-            cls._instance = super(GetTracks, cls).__new__(cls)
-            cls._instance._initialized = False  # Marcar como no inicializado
-        return cls._instance  # Retornar la misma instancia cada vez que se llame a la clase
+            cls._instance = super(SpotifyManager, cls).__new__(cls)
+            cls._instance._initialized = False  
+        return cls._instance  
 
     def __init__(self):
-        """Inicializa la clase GetTracks, configura el logger y establece la conexión con Spotify."""
-        if self._initialized:  # Si ya fue inicializado, no volver a ejecutarlo
+        if self._initialized:  
             return
 
-        self.logger = log.getLogger(__name__)  # Inicializar el logger
-        self.spotify = None  # Inicializar la variable que contendrá la API autenticada
-        self.logger.info("SpotifyGetInfo initialized")
+        self.logger = log.getLogger(__name__)  
+        self.spotify = None  
+        self.logger.info("SpotifyManager initialized")
+        self.offset = 0  
 
         try:
-            # Crear una instancia de `spotifyConnector` y autenticar
             connector = sc.spotifyConnector()
             self.spotify = connector.authenticate()
             self.logger.info("✅ Conexión con Spotify establecida correctamente")
-            self._initialized = True  # Marcar la instancia como inicializada
+            self._initialized = True  
 
         except Exception as e:
-            self.logger.error(f"❌ Error al inicializar SpotifyGetInfo: {e}")
-            GetTracks._instance = None  # Eliminar la instancia en caso de error
+            self.logger.error(f"❌ Error al inicializar SpotifyManager: {e}")
+            SpotifyManager._instance = None  
             raise e
 
-    def is_authenticated(self):
-        """
-        Verifica si la autenticación con Spotify fue exitosa.
-        
-        Retorna:
-        - (bool) True si la autenticación fue exitosa, False en caso contrario.
-        """
+    def is_authenticated(self) -> bool:
         return self.spotify is not None
 
-    def get_top_tracks(self, limit=15):
+    def get_top_tracks(self, limit: int = 50, time_range: str = "long_term") -> Optional[List[Dict[str, Any]]]:
         """
-        Obtiene las canciones más escuchadas del usuario desde la API de Spotify.
+        Obtiene las canciones más escuchadas del usuario con paginación.
 
-        Parámetros:
-        limit (int): Número máximo de canciones a obtener (por defecto 15).
+        Args:
+            limit (int): Número total de canciones a obtener (máximo permitido por solicitud: 50).
+            time_range (str): Periodo de tiempo ('short_term', 'medium_term', 'long_term').
 
-        Retorna:
-        list | None: Lista de las canciones más escuchadas del usuario o None en caso de error.
+        Returns:
+            Optional[List[Dict[str, Any]]]: Lista de canciones más escuchadas o None en caso de error.
         """
         if not self.is_authenticated():
             self.logger.error("❌ No se pueden obtener canciones: autenticación fallida")
             return None
 
+        all_tracks = []
+        self.offset = 0  
+
         try:
-            # Obtener las canciones más escuchadas
-            top_tracks = self.spotify.current_user_top_tracks(limit=limit,time_range='long_term')
+            while limit > 0:
+                current_limit = min(50, limit)  
+                top_tracks = self.spotify.current_user_top_tracks(
+                    limit=current_limit, 
+                    offset=self.offset, 
+                    time_range=time_range
+                )
 
-            # Verificar si la respuesta tiene datos
-            if "items" not in top_tracks or not top_tracks["items"]:
-                self.logger.warning("⚠ No se encontraron canciones en el historial")
-                return None
+                if "items" not in top_tracks or not top_tracks["items"]:
+                    if self.offset == 0:  
+                        self.logger.warning("⚠ No se encontraron canciones en el historial")
+                        return None
+                    else:  
+                        break
 
-            self.logger.info(f"🎵 {len(top_tracks['items'])} canciones recuperadas correctamente")
-            return top_tracks["items"]
+                all_tracks.extend(top_tracks["items"])  
+
+                if len(top_tracks["items"]) < current_limit:
+                    break
+
+                limit -= current_limit
+                self.offset += current_limit
+
+            self.logger.info(f"🎵 {len(all_tracks)} canciones recuperadas correctamente")
+            return all_tracks
 
         except Exception as e:
             self.logger.error(f"❌ Error al obtener canciones: {e}")
+            return None
+
+    def get_top_artists(self, limit: int = 15, time_range: str = "long_term") -> Optional[List[Dict[str, Any]]]:
+        """
+        Obtiene los artistas más escuchados del usuario.
+
+        Args:
+            limit (int): Número total de artistas a obtener (máximo permitido por solicitud: 50).
+            time_range (str): Periodo de tiempo ('short_term', 'medium_term', 'long_term').
+
+        Returns:
+            Optional[List[Dict[str, Any]]]: Lista de artistas más escuchados o None en caso de error.
+        """
+        if not self.is_authenticated():
+            self.logger.error("❌ No se pueden obtener artistas: autenticación fallida")
+            return None
+            
+        try:
+            self.offset = 0  
+            all_artists = []
+
+            while limit > 0:
+                current_limit = min(50, limit)  
+                top_artists = self.spotify.current_user_top_artists(
+                    limit=current_limit,
+                    offset=self.offset,
+                    time_range=time_range
+                )
+                
+                if "items" not in top_artists or not top_artists["items"]:
+                    if self.offset == 0:
+                        self.logger.warning("⚠ No se encontraron artistas en el historial")
+                        return None
+                    else:
+                        break
+
+                all_artists.extend(top_artists["items"])
+
+                if len(top_artists["items"]) < current_limit:
+                    break
+
+                limit -= current_limit
+                self.offset += current_limit
+
+            self.logger.info(f"🎵 {len(all_artists)} artistas recuperados correctamente")
+            return all_artists
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error al obtener artistas: {e}")
             return None
 
 
 # Bloque principal para ejecutar el código
 if __name__ == "__main__":
     try:
-        # Instanciar la clase Singleton (si ya existe, usa la misma)
-        spotify_info = GetTracks()
-        tracks_list = spotify_info.get_top_tracks(limit=15)
+        spotify_info = SpotifyManager()
+        tracks_list = spotify_info.get_top_tracks(limit=100, time_range="medium_term")
+        artists_list = spotify_info.get_top_artists(limit=30, time_range="medium_term")
 
-        # Imprimir las canciones de manera legible
         if tracks_list:
             print("\n🎶 Tus canciones más escuchadas:\n")
             for i, track in enumerate(tracks_list, 1):
                 track_name = track.get("name", "Desconocido")
-                artists = track.get("artists", [])
-                artist_name = artists[0]["name"] if artists else "Desconocido"
+                artist_name = track["artists"][0]["name"] if track.get("artists") else "Desconocido"
                 print(f"{i}. {track_name} - {artist_name}")
-        else:
-            print("\n❌ No se pudieron obtener las canciones.")
+        
+        if artists_list:
+            print("\n🎶 Tus artistas más escuchados:\n")
+            for i, artist in enumerate(artists_list, 1):
+                print(f"{i}. {artist.get('name', 'Desconocido')}")
 
     except Exception as e:
         print(f"\n❌ Error en la ejecución: {e}")

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="testinfo.TestSpotifyManager-20250322011056" tests="1" file="testinfo.py" time="0.002" timestamp="2025-03-22T01:10:56" failures="0" errors="0" skipped="0">
+	<testcase classname="testinfo.TestSpotifyManager" name="test_get_top_tracks_success" time="0.002" timestamp="2025-03-22T01:10:56" file="tests\testinfo.py" line="11">
+		<!--Prueba obtener top tracks con una respuesta válida-->
+	</testcase>
+</testsuite>
